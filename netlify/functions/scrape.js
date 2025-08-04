@@ -64,7 +64,6 @@ async function searchOnlineVideos(query) {
         const $ = cheerio.load(res.data);
         const links = [];
 
-        // Logika scrapovania pre video IDs - ZMENA BOLA TU (odstránené div.video-item)
         $('a[href^="/video/"]').each((i, el) => {
             const href = $(el).attr('href');
             const match = href ? href.match(/\/video\/(\d+)\//) : null;
@@ -89,10 +88,14 @@ async function extractStreamsFromVideoId(videoId) {
     try {
         const res = await axios.get(videoUrl, { headers: commonHeaders });
         console.log(`[SCRAPER] Status detailu videa: ${res.status}`);
+        
+        // >>>>> PRIDANÝ NOVÝ DEBUG LOG <<<<<
+        console.log(`[SCRAPER DEBUG] Prvých 500 znakov HTML: ${res.data.substring(0, 500)}`); 
+        // >>>>> KONIEC NOVÉHO DEBUG LOGU <<<<<
 
         const $ = cheerio.load(res.data);
-        const sourceTags = $('video source'); // Toto je stále správne
-        const titleText = $('title').text().trim(); // Uistite sa, že získava titul
+        const sourceTags = $('video source');
+        const titleText = $('title').text().trim();
         console.log(`[SCRAPER DEBUG] Title text from page: "${titleText}"`);
         const flags = extractFlags(titleText);
         console.log(`[SCRAPER DEBUG] Extracted flags: ${flags.join(', ')}`);
@@ -104,10 +107,7 @@ async function extractStreamsFromVideoId(videoId) {
 
             console.log(`[SCRAPER DEBUG] Raw source tag src: "${src}"`);
 
-            // Agresívnejšie odstránenie viacerých lomítok, ale zachovanie protokolu
             if (src) {
-                // Táto regex nahradí všetky sekvencie //+ (dve a viac lomítok) za jedno lomítko,
-                // ale vynechá // v http:// alebo https://
                 src = src.replace(/(https?:\/\/[^\/]+\/)(.+)/, (match, p1, p2) => {
                     return p1 + p2.replace(/\/\/+/g, '/');
                 });
