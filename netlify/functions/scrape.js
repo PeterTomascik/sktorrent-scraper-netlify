@@ -53,7 +53,6 @@ function formatName(fullTitle, flagsArray) {
 
 
 // --- Hlavné scraping funkcie upravené pre priame volanie na sktorrent ---
-// --- Hlavné scraping funkcie upravené pre priame volanie na sktorrent ---
 async function searchOnlineVideos(query) {
     const searchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
     console.log(`[SCRAPER] Hľadám '${query}' na ${searchUrl} (priamo)`);
@@ -61,19 +60,16 @@ async function searchOnlineVideos(query) {
     try {
         const res = await axios.get(searchUrl, { headers: commonHeaders });
         console.log(`[SCRAPER] Status vyhľadávania: ${res.status}`);
-        // console.log(`[SCRAPER] HTML Snippet vyhľadávania:`, res.data.slice(0, 1000)); // Zakomentované pre kratšie logy
 
         const $ = cheerio.load(res.data);
         const links = [];
 
-        // Logika scrapovania pre video IDs - ZMENA JE TU:
-        // Hľadáme priamo <a> tagy, ktoré majú href začínajúci na "/video/"
-        $('a[href^="/video/"]').each((i, el) => { // <--- TENTO RIADOK JE ZMENENÝ!
+        // Logika scrapovania pre video IDs - ZMENA BOLA TU (odstránené div.video-item)
+        $('a[href^="/video/"]').each((i, el) => {
             const href = $(el).attr('href');
             const match = href ? href.match(/\/video\/(\d+)\//) : null;
             if (match && match[1]) {
                 const videoId = match[1];
-                // Odstránime kontrolu na span.video-title, lebo už je redundantná a mohla by robiť problémy
                 links.push(videoId);
             }
         });
@@ -85,6 +81,7 @@ async function searchOnlineVideos(query) {
         return [];
     }
 }
+
 async function extractStreamsFromVideoId(videoId) {
     const videoUrl = `https://online.sktorrent.eu/video/${videoId}`;
     console.log(`[SCRAPER] Načítavam detaily videa: ${videoUrl} (priamo)`);
@@ -92,25 +89,41 @@ async function extractStreamsFromVideoId(videoId) {
     try {
         const res = await axios.get(videoUrl, { headers: commonHeaders });
         console.log(`[SCRAPER] Status detailu videa: ${res.status}`);
-        // console.log(`[SCRAPER] Detail HTML Snippet:`, res.data.slice(0, 5000)); // Zakomentované pre kratšie logy
 
         const $ = cheerio.load(res.data);
-        const sourceTags = $('video source');
-        const titleText = $('title').text().trim();
+        const sourceTags = $('video source'); // Toto je stále správne
+        const titleText = $('title').text().trim(); // Uistite sa, že získava titul
+        console.log(`[SCRAPER DEBUG] Title text from page: "${titleText}"`);
         const flags = extractFlags(titleText);
+        console.log(`[SCRAPER DEBUG] Extracted flags: ${flags.join(', ')}`);
 
         const streams = [];
         sourceTags.each((i, el) => {
             let src = $(el).attr('src');
             const label = $(el).attr('label') || 'Unknown';
+
+            console.log(`[SCRAPER DEBUG] Raw source tag src: "${src}"`);
+
+            // Agresívnejšie odstránenie viacerých lomítok, ale zachovanie protokolu
+            if (src) {
+                // Táto regex nahradí všetky sekvencie //+ (dve a viac lomítok) za jedno lomítko,
+                // ale vynechá // v http:// alebo https://
+                src = src.replace(/(https?:\/\/[^\/]+\/)(.+)/, (match, p1, p2) => {
+                    return p1 + p2.replace(/\/\/+/g, '/');
+                });
+            }
+            
+            console.log(`[SCRAPER DEBUG] Processed source tag src: "${src}"`);
+
             if (src && src.endsWith('.mp4')) {
-                src = src.replace(/([^:])\/\/+/, '$1/');
-                console.log(`[SCRAPER] ${label} stream URL: ${src}`);
+                console.log(`[SCRAPER] 🎞️ Nájdený stream: ${label} URL: ${src}`);
                 streams.push({
                     title: formatName(titleText, flags),
                     name: formatTitle(label),
                     url: src
                 });
+            } else {
+                console.log(`[SCRAPER DEBUG] Preskočený stream (nie .mp4 alebo chýba src): ${src}`);
             }
         });
 
@@ -125,9 +138,7 @@ async function extractStreamsFromVideoId(videoId) {
 
 // --- HLAVNÁ HANDLER FUNKCIA PRE NETLIFY ---
 exports.handler = async (event, context) => {
-    // Netlify funkcie prijímajú parametre v event.queryStringParameters
-    // Alebo v tele požiadavky (event.body) ak je to POST
-    if (event.httpMethod !== 'POST') { // Očakávame POST pre lepšie spracovanie JSON dát
+    if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,
             body: JSON.stringify({ message: "Metóda nie je povolená. Použite POST." }),
@@ -145,7 +156,7 @@ exports.handler = async (event, context) => {
         };
     }
 
-    const { imdbId, type, season, episode } = payload; // Destrukturujeme z payloadu
+    const { imdbId, type, season, episode } = payload;
 
     if (!imdbId || !type) {
         return {
@@ -156,7 +167,6 @@ exports.handler = async (event, context) => {
 
     console.log(`\n====== [NETLIFY FUNCTION] Požiadavka pre: type='${type}', id='${imdbId}:${season}:${episode}' ======`);
 
-    // Pôvodná logika získania titulov z IMDb (volať priamo z funkcie)
     async function getTitleFromIMDb(imdbId) {
         try {
             const url = `https://www.imdb.com/title/${imdbId}/`;
@@ -186,11 +196,10 @@ exports.handler = async (event, context) => {
         }
     }
 
-
     const titles = await getTitleFromIMDb(imdbId);
     if (!titles) {
         return {
-            statusCode: 200, // Stále vrátime 200, ak sa nenašli streamy
+            statusCode: 200,
             body: JSON.stringify({ streams: [] }),
         };
     }
@@ -232,7 +241,6 @@ exports.handler = async (event, context) => {
 
     console.log(`[SCRAPER] Odosielam ${allStreams.length} streamov.`);
 
-    // Vrátime výsledok ako JSON
     return {
         statusCode: 200,
         body: JSON.stringify({ streams: allStreams }),
