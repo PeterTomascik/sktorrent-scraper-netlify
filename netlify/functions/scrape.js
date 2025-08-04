@@ -87,16 +87,28 @@ async function searchOnlineVideos(query) {
     }
 }
 
+// ... (ostatný kód) ...
+
 async function extractStreamsFromVideoId(videoId) {
     const videoUrl = `https://online.sktorrent.eu/video/${videoId}`;
     console.log(`[SCRAPER] Načítavam detaily videa: ${videoUrl} (priamo)`);
 
     try {
-        const res = await axios.get(videoUrl, { headers: commonHeaders });
+        const res = await axios.get(videoUrl, {
+            headers: commonHeaders,
+            maxRedirects: 5, // Sledujeme max 5 presmerovaní
+            validateStatus: function (status) {
+                return status >= 200 && status < 300; // Akceptujeme iba 2xx statusy
+            }
+        });
         console.log(`[SCRAPER] Status detailu videa: ${res.status}`);
-        
         // >>>>> PRIDANÝ NOVÝ DEBUG LOG <<<<<
-        console.log(`[SCRAPER DEBUG] Prvých 500 znakov HTML: ${res.data.substring(0, 500)}`); 
+        // Skontrolujeme, či res.data nie je prázdne pred logovaním
+        if (res.data && res.data.length > 0) {
+            console.log(`[SCRAPER DEBUG] Prvých 500 znakov HTML: ${res.data.substring(0, Math.min(res.data.length, 500))}`);
+        } else {
+            console.log(`[SCRAPER DEBUG] Res.data je prázdne alebo nedefinované.`);
+        }
         // >>>>> KONIEC NOVÉHO DEBUG LOGU <<<<<
 
         const $ = cheerio.load(res.data);
@@ -106,41 +118,14 @@ async function extractStreamsFromVideoId(videoId) {
         const flags = extractFlags(titleText);
         console.log(`[SCRAPER DEBUG] Extracted flags: ${flags.join(', ')}`);
 
-        const streams = [];
-        sourceTags.each((i, el) => {
-            let src = $(el).attr('src');
-            const label = $(el).attr('label') || 'Unknown';
-
-            console.log(`[SCRAPER DEBUG] Raw source tag src: "${src}"`);
-
-            if (src) {
-                src = src.replace(/(https?:\/\/[^\/]+\/)(.+)/, (match, p1, p2) => {
-                    return p1 + p2.replace(/\/\/+/g, '/');
-                });
-            }
-            
-            console.log(`[SCRAPER DEBUG] Processed source tag src: "${src}"`);
-
-            if (src && src.endsWith('.mp4')) {
-                console.log(`[SCRAPER] 🎞️ Nájdený stream: ${label} URL: ${src}`);
-                streams.push({
-                    title: formatName(titleText, flags),
-                    name: formatTitle(label),
-                    url: src
-                });
-            } else {
-                console.log(`[SCRAPER DEBUG] Preskočený stream (nie .mp4 alebo chýba src): ${src}`);
-            }
-        });
-
-        console.log(`[SCRAPER] Našiel som ${streams.length} streamov pre videoId=${videoId}`);
-        return streams;
+        // ... (zvyšok funkcie) ...
     } catch (err) {
         console.error("[SCRAPER ERROR] Chyba pri načítaní detailu videa:", err.message);
         return [];
     }
 }
 
+// ... (ostatný kód) ...
 
 // --- HLAVNÁ HANDLER FUNKCIA PRE NETLIFY ---
 exports.handler = async (event, context) => {
