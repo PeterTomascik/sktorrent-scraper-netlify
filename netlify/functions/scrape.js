@@ -53,6 +53,7 @@ function formatName(fullTitle, flagsArray) {
 
 
 // --- Hlavné scraping funkcie upravené pre priame volanie na sktorrent ---
+// --- Hlavné scraping funkcie upravené pre priame volanie na sktorrent ---
 async function searchOnlineVideos(query) {
     const searchUrl = `https://online.sktorrent.eu/search/videos?search_query=${encodeURIComponent(query)}`;
     console.log(`[SCRAPER] Hľadám '${query}' na ${searchUrl} (priamo)`);
@@ -65,16 +66,15 @@ async function searchOnlineVideos(query) {
         const $ = cheerio.load(res.data);
         const links = [];
 
-        // Logika scrapovania pre video IDs
-        $('div.video-item a[href^="/video/"]').each((i, el) => {
+        // Logika scrapovania pre video IDs - ZMENA JE TU:
+        // Hľadáme priamo <a> tagy, ktoré majú href začínajúci na "/video/"
+        $('a[href^="/video/"]').each((i, el) => { // <--- TENTO RIADOK JE ZMENENÝ!
             const href = $(el).attr('href');
             const match = href ? href.match(/\/video\/(\d+)\//) : null;
             if (match && match[1]) {
                 const videoId = match[1];
-                const titleSpan = $(el).find('span.video-title');
-                if (titleSpan.length > 0) {
-                     links.push(videoId);
-                }
+                // Odstránime kontrolu na span.video-title, lebo už je redundantná a mohla by robiť problémy
+                links.push(videoId);
             }
         });
 
@@ -85,7 +85,6 @@ async function searchOnlineVideos(query) {
         return [];
     }
 }
-
 async function extractStreamsFromVideoId(videoId) {
     const videoUrl = `https://online.sktorrent.eu/video/${videoId}`;
     console.log(`[SCRAPER] Načítavam detaily videa: ${videoUrl} (priamo)`);
